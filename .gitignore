@@ -1,0 +1,30 @@
+gitignore
+# Backend - EXCLUDE COMPLETELY
+back-end/
+back-end/**/*
+back-end/node_modules/
+back-end/.env
+back-end/*.log
+back-end/package-lock.json
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Flutter/Dart
+front-end/.dart_tool/
+front-end/build/
+front-end/*.log
+front-end/*.lock
+front-end/.flutter-plugins
+front-end/.flutter-plugins-dependencies
+front-end/.pub-cache/
+front-end/pubspec.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
