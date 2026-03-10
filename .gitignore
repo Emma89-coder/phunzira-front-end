@@ -1,55 +1,30 @@
-# Flutter/Dart related
-.dart_tool/
-.packages
-build/
-*.log
-*.lock
-*.iml
-.flutter-plugins
-.flutter-plugins-dependencies
-.dart_tool/
-.packages
-.pub-cache/
-pubspec.lock
+gitignore
+# Backend - EXCLUDE COMPLETELY
+back-end/
+back-end/**/*
+back-end/node_modules/
+back-end/.env
+back-end/*.log
+back-end/package-lock.json
 
 # IDE files
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
+*.iml
+*.iws
+*.ipr
 
-# Backend (exclude completely)
-back-end/
-back-end/node_modules/
-.env
-*.log
-package-lock.json
+# Flutter/Dart
+front-end/.dart_tool/
+front-end/build/
+front-end/*.log
+front-end/*.lock
+front-end/.flutter-plugins
+front-end/.flutter-plugins-dependencies
+front-end/.pub-cache/
+front-end/pubspec.lock
 
 # OS files
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Android Studio
-*.iml
-*.iws
-.idea/
-out/
-gen-external-apklibs
-
-# iOS
-ios/Flutter/Flutter.podspec
-ios/Pods/
-ios/.symlinks/
-ios/Flutter/Generated.xcconfig
-ios/Flutter/ephemeral/
-
-# Coverage
-coverage/
-test/.test_runner.dart
-
-# Miscellaneous
-*.swp
-*.swo
-*~
