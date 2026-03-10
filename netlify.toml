@@ -1,0 +1,18 @@
+[build]
+base = "front-end"
+command = """
+  # Download and setup Flutter
+  wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.16.0-stable.tar.xz
+  tar xf flutter_linux_3.16.0-stable.tar.xz
+  export PATH="$PATH:$(pwd)/flutter/bin"
+  flutter config --enable-web
+
+  # Build the web app
+  flutter build web --release
+  """
+publish = "build/web"
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
