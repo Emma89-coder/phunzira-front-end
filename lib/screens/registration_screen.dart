@@ -4,6 +4,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// ✅ Define backend base URL using environment variable or fallback
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://phunzira-backend.onrender.com', // replace with your actual Render backend URL
+);
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
 
@@ -54,7 +60,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://your-server-ip:3000/api/auth/register'),
+        Uri.parse('$apiBaseUrl/api/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'username': _usernameController.text.trim(),
@@ -70,11 +76,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           _successMessage = 'Registration successful! Redirecting to login...';
         });
 
-        // Optional: Auto-login after registration
+        // ✅ Save tokens if returned
         if (data['accessToken'] != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('accessToken', data['accessToken']);
-          await prefs.setString('refreshToken', data['refreshToken']);
+          await prefs.setString('refreshToken', data['refreshToken'] ?? '');
         }
 
         Future.delayed(const Duration(seconds: 2), () {

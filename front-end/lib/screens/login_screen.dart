@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -21,6 +22,38 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // FIXED: Use environment variable or deployed backend URL
+  String get baseUrl {
+    // For web deployment (Netlify)
+    if (kIsWeb) {
+      // Use environment variable or your deployed Render backend
+      const String? apiUrl = String.fromEnvironment('API_URL');
+      if (apiUrl != null && apiUrl.isNotEmpty) {
+        return apiUrl;
+      }
+      // Fallback to your deployed Render backend
+      return 'https://phunzira-backend.onrender.com';
+    }
+    // For mobile emulator
+    return 'http://10.0.2.2:5000'; // Android emulator
+    // return 'http://localhost:5000'; // iOS simulator
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingSession();
+  }
+
+  // NEW: Check if user is already logged in
+  Future<void> _checkExistingSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    if (token != null && mounted) {
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    }
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -37,42 +70,62 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      print('Attempting login to: $baseUrl/api/auth/login'); // Debug log
+
       final response = await http.post(
-        Uri.parse('http://your-server-ip:3000/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$baseUrl/api/auth/login'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: json.encode({
-          'email': _emailController.text.trim(),
+          'email': _emailController.text.trim().toLowerCase(),
           'password': _passwordController.text,
         }),
-      );
+      ).timeout(const Duration(seconds: 10));
+
+      print('Response status: ${response.statusCode}'); // Debug log
+      print('Response body: ${response.body}'); // Debug log
 
       final data = json.decode(response.body);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         // Login successful
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('accessToken', data['accessToken']);
-        await prefs.setString('refreshToken', data['refreshToken']);
+
+        // Save tokens
+        await prefs.setString('accessToken', data['data']?['accessToken'] ?? data['accessToken'] ?? '');
+        await prefs.setString('refreshToken', data['data']?['refreshToken'] ?? data['refreshToken'] ?? '');
 
         // Store user data if returned
-        if (data['user'] != null) {
-          await prefs.setString('userEmail', data['user']['email'] ?? '');
-          await prefs.setString('userName', data['user']['username'] ?? '');
-          await prefs.setString('userId', data['user']['id']?.toString() ?? '');
+        final userData = data['data']?['user'] ?? data['user'];
+        if (userData != null) {
+          await prefs.setString('userEmail', userData['email'] ?? _emailController.text);
+          await prefs.setString('userName', userData['username'] ?? userData['name'] ?? 'User');
+          await prefs.setString('userId', userData['id']?.toString() ?? userData['userId']?.toString() ?? '');
+          await prefs.setString('userRole', userData['role'] ?? 'user');
         }
 
         if (mounted) {
+          // Navigate to dashboard
           Navigator.pushReplacementNamed(context, '/dashboard');
         }
       } else {
         // Handle error response
         setState(() {
-          _errorMessage = data['message'] ?? 'Invalid email or password';
+          _errorMessage = data['message'] ?? data['error'] ?? 'Invalid email or password';
         });
       }
     } catch (e) {
+      print('Login error: $e'); // Debug log
       setState(() {
-        _errorMessage = 'Network error. Please check your connection.';
+        if (e.toString().contains('Timeout')) {
+          _errorMessage = 'Connection timeout. Server is starting up. Please try again.';
+        } else if (e.toString().contains('SocketException')) {
+          _errorMessage = 'Cannot connect to server. Please check your internet connection.';
+        } else {
+          _errorMessage = 'Network error. Please check your connection and try again.';
+        }
       });
     } finally {
       if (mounted) {
@@ -163,6 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Email',
                               hintText: 'Enter your email',
@@ -188,6 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: !_isPasswordVisible,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Password',
                               hintText: 'Enter your password',
@@ -196,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 icon: Icon(
                                   _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
                                 ),
-                                onPressed: () {
+                                onPressed: _isLoading ? null : () { // FIXED: Disable while loading
                                   setState(() {
                                     _isPasswordVisible = !_isPasswordVisible;
                                   });
@@ -218,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton(
-                              onPressed: () {
+                              onPressed: _isLoading ? null : () { // FIXED: Disable while loading
                                 Navigator.pushNamed(context, '/forgot-password');
                               },
                               child: Text(
@@ -235,6 +290,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.red.shade50,
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.shade200),
                               ),
                               child: Row(
                                 children: [
@@ -260,6 +316,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: _isLoading ? null : _login,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue.shade700,
+                                foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -288,7 +345,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(color: Colors.white.withOpacity(0.9)),
                       ),
                       GestureDetector(
-                        onTap: () {
+                        onTap: _isLoading ? null : () { // FIXED: Disable while loading
                           Navigator.pushNamed(context, '/register');
                         },
                         child: const Text(

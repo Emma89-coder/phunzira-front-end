@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
@@ -16,6 +17,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController(); // ADDED
+  final TextEditingController _lastNameController = TextEditingController();  // ADDED
+  final TextEditingController _phoneController = TextEditingController();      // ADDED
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
@@ -27,12 +31,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _errorMessage;
   String? _successMessage;
 
+  // FIXED: Use environment variable or deployed backend URL
+  String get baseUrl {
+    if (kIsWeb) {
+      const String? apiUrl = String.fromEnvironment('API_URL');
+      if (apiUrl != null && apiUrl.isNotEmpty) {
+        return apiUrl;
+      }
+      return 'https://phunzira-backend.onrender.com'; // Your deployed backend
+    }
+    return 'http://10.0.2.2:5000'; // Android emulator
+  }
+
   @override
   void dispose() {
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -53,28 +72,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
+      print('Attempting registration to: $baseUrl/api/auth/register'); // Debug log
+
       final response = await http.post(
-        Uri.parse('http://your-server-ip:3000/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$baseUrl/api/auth/register'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: json.encode({
-          'username': _usernameController.text.trim(),
+          'username': _usernameController.text.trim().toLowerCase(),
           'email': _emailController.text.trim().toLowerCase(),
           'password': _passwordController.text,
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+          'phone': _phoneController.text.trim(),
         }),
-      );
+      ).timeout(const Duration(seconds: 10));
+
+      print('Response status: ${response.statusCode}'); // Debug log
+      print('Response body: ${response.body}'); // Debug log
 
       final data = json.decode(response.body);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         setState(() {
           _successMessage = 'Registration successful! Redirecting to login...';
         });
 
         // Optional: Auto-login after registration
-        if (data['accessToken'] != null) {
+        final accessToken = data['data']?['accessToken'] ?? data['accessToken'];
+        if (accessToken != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('accessToken', data['accessToken']);
-          await prefs.setString('refreshToken', data['refreshToken']);
+          await prefs.setString('accessToken', accessToken);
+          await prefs.setString('refreshToken', data['data']?['refreshToken'] ?? data['refreshToken'] ?? '');
         }
 
         Future.delayed(const Duration(seconds: 2), () {
@@ -84,12 +115,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
         });
       } else {
         setState(() {
-          _errorMessage = data['message'] ?? 'Registration failed';
+          _errorMessage = data['message'] ?? data['error'] ?? 'Registration failed';
         });
       }
     } catch (e) {
+      print('Registration error: $e'); // Debug log
       setState(() {
-        _errorMessage = 'Network error. Please check your connection.';
+        if (e.toString().contains('Timeout')) {
+          _errorMessage = 'Connection timeout. Server is starting up. Please try again.';
+        } else if (e.toString().contains('SocketException')) {
+          _errorMessage = 'Cannot connect to server. Please check your internet connection.';
+        } else {
+          _errorMessage = 'Network error. Please check your connection.';
+        }
       });
     } finally {
       if (mounted) {
@@ -130,7 +168,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       child: IconButton(
                         icon: const Icon(Icons.arrow_back, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: _isLoading ? null : () => Navigator.pop(context), // FIXED: Disable while loading
                       ),
                     ),
                   ),
@@ -195,6 +233,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           // Username Field
                           TextFormField(
                             controller: _usernameController,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Username',
                               hintText: 'Choose a username',
@@ -210,6 +249,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               if (value.length < 3) {
                                 return 'Username must be at least 3 characters';
                               }
+                              if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
+                                return 'Username can only contain letters, numbers, and underscores';
+                              }
                               return null;
                             },
                           ),
@@ -220,6 +262,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Email',
                               hintText: 'Enter your email',
@@ -241,10 +284,81 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                           const SizedBox(height: 16),
 
+                          // First Name Field (NEW)
+                          TextFormField(
+                            controller: _firstNameController,
+                            enabled: !_isLoading,
+                            decoration: InputDecoration(
+                              labelText: 'First Name',
+                              hintText: 'Enter your first name',
+                              prefixIcon: const Icon(Icons.person),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'First name is required';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Last Name Field (NEW)
+                          TextFormField(
+                            controller: _lastNameController,
+                            enabled: !_isLoading,
+                            decoration: InputDecoration(
+                              labelText: 'Last Name',
+                              hintText: 'Enter your last name',
+                              prefixIcon: const Icon(Icons.person_outline),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Last name is required';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Phone Field (NEW)
+                          TextFormField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            enabled: !_isLoading,
+                            decoration: InputDecoration(
+                              labelText: 'Phone Number',
+                              hintText: 'Enter your phone number',
+                              prefixIcon: const Icon(Icons.phone),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Phone number is required';
+                              }
+                              if (!RegExp(r'^[0-9+\-\s]+$').hasMatch(value)) {
+                                return 'Enter a valid phone number';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
                           // Password Field
                           TextFormField(
                             controller: _passwordController,
                             obscureText: !_isPasswordVisible,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Password',
                               hintText: 'Create a password',
@@ -253,7 +367,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 icon: Icon(
                                   _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
                                 ),
-                                onPressed: () {
+                                onPressed: _isLoading ? null : () { // FIXED: Disable while loading
                                   setState(() {
                                     _isPasswordVisible = !_isPasswordVisible;
                                   });
@@ -267,8 +381,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter a password';
                               }
-                              if (value.length < 6) {
-                                return 'Password must be at least 6 characters';
+                              if (value.length < 8) { // FIXED: Increased to 8 characters
+                                return 'Password must be at least 8 characters';
+                              }
+                              if (!RegExp(r'^(?=.*[A-Za-z])(?=.*\d)').hasMatch(value)) {
+                                return 'Password must contain at least one letter and one number';
                               }
                               return null;
                             },
@@ -280,6 +397,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _confirmPasswordController,
                             obscureText: !_isConfirmPasswordVisible,
+                            enabled: !_isLoading, // FIXED: Disable while loading
                             decoration: InputDecoration(
                               labelText: 'Confirm Password',
                               hintText: 'Re-enter your password',
@@ -288,7 +406,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 icon: Icon(
                                   _isConfirmPasswordVisible ? Icons.visibility_off : Icons.visibility,
                                 ),
-                                onPressed: () {
+                                onPressed: _isLoading ? null : () { // FIXED: Disable while loading
                                   setState(() {
                                     _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
                                   });
@@ -316,7 +434,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             children: [
                               Checkbox(
                                 value: _acceptTerms,
-                                onChanged: (value) {
+                                onChanged: _isLoading ? null : (value) { // FIXED: Disable while loading
                                   setState(() {
                                     _acceptTerms = value ?? false;
                                   });
@@ -340,6 +458,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.red.shade50,
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.shade200),
                               ),
                               child: Row(
                                 children: [
@@ -361,6 +480,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.green.shade50,
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.green.shade200),
                               ),
                               child: Row(
                                 children: [
@@ -386,6 +506,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               onPressed: _isLoading ? null : _register,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue.shade700,
+                                foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -414,7 +535,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         style: TextStyle(color: Colors.white.withOpacity(0.9)),
                       ),
                       GestureDetector(
-                        onTap: () {
+                        onTap: _isLoading ? null : () { // FIXED: Disable while loading
                           Navigator.pushReplacementNamed(context, '/login');
                         },
                         child: const Text(
